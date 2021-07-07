@@ -1,0 +1,10 @@
+21:58:58 **** Incremental Build of configuration Debug for project ADS8688_444444444444444444444444444444444444444 ****
+make -j12 all 
+arm-none-eabi-size   ADS8688_444444444444444444444444444444444444444.elf 
+   text	   data	    bss	    dec	    hex	filename
+  12432	     20	   1884	  14336	   3800	ADS8688_444444444444444444444444444444444444444.elf
+Finished building: default.size.stdout
+ 
+
+21:58:59 Build Finished. 0 errors, 0 warnings. (took 632ms)
+

@@ -1,0 +1,10 @@
+22:08:43 **** Incremental Build of configuration Debug for project BDS5_OSCsure ****
+make -j12 all 
+arm-none-eabi-size   BDS5_OSCsure.elf 
+   text	   data	    bss	    dec	    hex	filename
+  38976	    488	   5440	  44904	   af68	BDS5_OSCsure.elf
+Finished building: default.size.stdout
+ 
+
+22:08:44 Build Finished. 0 errors, 0 warnings. (took 673ms)
+

@@ -1,0 +1,531 @@
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file           : main.c
+  * @brief          : Main program body
+  ******************************************************************************
+  * @attention
+  *
+  * <h2><center>&copy; Copyright (c) 2021 STMicroelectronics.
+  * All rights reserved.</center></h2>
+  *
+  * This software component is licensed by ST under BSD 3-Clause license,
+  * the "License"; You may not use this file except in compliance with the
+  * License. You may obtain a copy of the License at:
+  *                        opensource.org/licenses/BSD-3-Clause
+  *
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+/* Includes ------------------------------------------------------------------*/
+#include "main.h"
+#include "dma.h"
+#include "spi.h"
+#include "tim.h"
+#include "usart.h"
+#include "gpio.h"
+
+/* Private includes ----------------------------------------------------------*/
+/* USER CODE BEGIN Includes */
+#include "ADS8688.h"
+#include "stdio.h"
+/* USER CODE END Includes */
+
+/* Private typedef -----------------------------------------------------------*/
+/* USER CODE BEGIN PTD */
+
+// macro and pattern to print binary numbers
+#define BYTE_TO_BIN_PAT "%c%c%c%c%c%c%c%c"
+#define BYTE_TO_BIN(byte)		\
+	(byte & 0x80 ? '1' : '0'),	\
+	(byte & 0x40 ? '1' : '0'),	\
+	(byte & 0x20 ? '1' : '0'),	\
+	(byte & 0x10 ? '1' : '0'),	\
+	(byte & 0x08 ? '1' : '0'),	\
+	(byte & 0x04 ? '1' : '0'),	\
+	(byte & 0x02 ? '1' : '0'),	\
+	(byte & 0x01 ? '1' : '0')
+
+
+/* USER CODE END PTD */
+
+/* Private define ------------------------------------------------------------*/
+/* USER CODE BEGIN PD */
+
+/* USER CODE END PD */
+
+/* Private macro -------------------------------------------------------------*/
+/* USER CODE BEGIN PM */
+
+/* USER CODE END PM */
+
+/* Private variables ---------------------------------------------------------*/
+
+/* USER CODE BEGIN PV */
+
+// ADS variables
+//大彩屏指�??????????????
+uint8_t scream_head=0xEE,screen_end[4]={0xFF,0xFC,0xFF,0xFF};
+//触发状�??   0已触�???????????    1未触�???????????
+uint8_t chufazhuangtai=0;
+
+//通道触发          1,1通道触发,2,2通道触发
+uint8_t trigger_mode;
+//通道显示与否    1显示�??????????????0不显�??????????????
+uint8_t ch1_show=1,ch2_show=1;
+
+int count_caiyang=0,count_pinlv=0;      //定时器计数器
+//垂直刻度    0�??????????????10mv        1�??????????????100mv          2�??????????????1v
+uint8_t chuizhi_scale=1;
+
+uint16_t count1ms=0;
+
+//水平刻度     0�????????????????????????????1ms档位     1,10ms档位       2,100ms档位
+uint8_t shuiping_scale=2;
+//水平刻度对应的分�????????????????????????????
+int fenpin_count[3]={1,10,100};
+//采样总时间（�????????????????????????????大计数器计数值）
+int max_count[3]={502,5020,50200};
+//采样到的�????????????????????????????
+uint16_t ch1_values[502],ch2_values[502];
+//两个通道采样到的点的�????????????????????????????大�?�和�????????????????????????????小�??
+uint16_t ch1_max,ch2_max,ch1_min,ch2_min;
+//触发电平
+uint16_t chufa_volts=0;
+//触发模式   0上升沿触�????????????????????????????    1下降沿触�????????????????????????????
+uint8_t chufa_mode=0;
+//触发通道  0,�????????????????????????????通道   1，二通道
+uint8_t chufa_ch=0;
+//两个通道的合计�??  （用来测量平均�?�）
+int total_ch1,total_ch2;
+int i;
+
+//指令
+uint8_t ch1_show_head[10]={
+		0xEE,0xB1,0x32,0x00,0x00,0x00,0x02,0x00,0x01,0x90
+};
+uint8_t ch2_show_head[10]={
+		0xEE,0xB1,0x32,0x00,0x00,0x00,0x02,0x01,0x01,0x90
+};
+uint8_t ch_showall[828]=
+{
+0xEE,0xB1,0x32,0x00,0x00,0x00,0x02,0x00,0x01,0x90,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xFF,0xFC,0xFF,0xFF,
+0xEE,0xB1,0x32,0x00,0x00,0x00,0x02,0x01,0x01,0x90,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xFF,0xFC,0xFF,0xFF
+};
+
+//收到的指�??????????
+uint8_t R_alldata[256];   //指令完整内容
+uint8_t R_onedata;    //指令单元
+uint16_t R_place=0;         //接收指令的位�??????????
+
+
+
+//两个通道的方波周期和占空�?????????????????
+uint32_t ch1_period=0,ch1_duty,ch2_period,ch2_duty;
+
+
+ADS8688 ads;
+//采样到的�????????????????????????????
+uint16_t ads_data[2];
+
+uint8_t rxbuf[2] = {0};
+uint8_t txbuf[2] = {0x00, 0x00};
+
+uint8_t CH1_ON=0;
+uint8_t CH2_ON=0;
+/* USER CODE END PV */
+
+/* Private function prototypes -----------------------------------------------*/
+void SystemClock_Config(void);
+/* USER CODE BEGIN PFP */
+
+void print(char *msg, ...);
+/* USER CODE END PFP */
+
+/* Private user code ---------------------------------------------------------*/
+/* USER CODE BEGIN 0 */
+
+/* USER CODE END 0 */
+
+/**
+  * @brief  The application entry point.
+  * @retval int
+  */
+int main(void)
+{
+  /* USER CODE BEGIN 1 */
+
+  /* USER CODE END 1 */
+
+  /* MCU Configuration--------------------------------------------------------*/
+
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  HAL_Init();
+
+  /* USER CODE BEGIN Init */
+
+  /* USER CODE END Init */
+
+  /* Configure the system clock */
+  SystemClock_Config();
+
+  /* USER CODE BEGIN SysInit */
+  HAL_Delay(200);
+  /* USER CODE END SysInit */
+
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_DMA_Init();
+  MX_TIM2_Init();
+  MX_SPI3_Init();
+  MX_TIM5_Init();
+  MX_TIM3_Init();
+  MX_USART2_UART_Init();
+  MX_USART1_UART_Init();
+  /* USER CODE BEGIN 2 */
+  HAL_TIM_Base_Start(&htim2);
+  HAL_TIM_IC_Start_DMA(&htim2,TIM_CHANNEL_1,&ch1_period,1);
+  HAL_TIM_Base_Start(&htim5);
+  HAL_TIM_IC_Start_DMA(&htim5,TIM_CHANNEL_2,&ch2_period,1);
+  htim2.State = HAL_TIM_STATE_READY;
+  htim3.State = HAL_TIM_STATE_READY;
+  //HAL_TIM_IC_Start_DMA(&htim2,TIM_CHANNEL_2,&ch1_duty,1);
+
+  ADS8688_Init(&ads, &hspi3, SPI3_CS_GPIO_Port, SPI3_CS_Pin);
+  HAL_Delay(500);
+  //ADS_Read_All_Raw(&ads, ads_data);
+  HAL_UART_Receive_IT(&huart1, (uint8_t *)&R_onedata, 1);
+  //HAL_UART_Transmit_IT(&huart2, ch_showall, 828);
+  TIM3->PSC=99;
+  HAL_TIM_Base_Start_IT(&htim3);
+
+  /* USER CODE END 2 */
+
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
+  while (1)
+  {
+
+    /* USER CODE END WHILE */
+
+    /* USER CODE BEGIN 3 */
+//		  for(int i=0; i<2; i++) {
+//			  if(i==1)
+//			  {
+//			  printf("CHN_%d: %u %u    "BYTE_TO_BIN_PAT" "BYTE_TO_BIN_PAT"  %f\n", i, (uint16_t)(ads_data[0]), (uint16_t)(ads_data[1]) ,  BYTE_TO_BIN(ads_data[1]), BYTE_TO_BIN(ads_data[0]), volt1[0]);
+//				//printf("%d",12);
+//			  }
+//			  else
+//			  {
+//			  printf("CHN_%d: %u %u    "BYTE_TO_BIN_PAT" "BYTE_TO_BIN_PAT"  %f\n", i, (uint16_t)(ads_data[0]), (uint16_t)(ads_data[1]) ,  BYTE_TO_BIN(ads_data[1]), BYTE_TO_BIN(ads_data[0]), volt2[0]);
+//			  }
+//		  }
+
+
+  }
+  /* USER CODE END 3 */
+}
+
+/**
+  * @brief System Clock Configuration
+  * @retval None
+  */
+void SystemClock_Config(void)
+{
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+
+  /** Configure the main internal regulator output voltage
+  */
+  __HAL_RCC_PWR_CLK_ENABLE();
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+  /** Initializes the RCC Oscillators according to the specified parameters
+  * in the RCC_OscInitTypeDef structure.
+  */
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLM = 4;
+  RCC_OscInitStruct.PLL.PLLN = 168;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+  RCC_OscInitStruct.PLL.PLLQ = 4;
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Initializes the CPU, AHB and APB buses clocks
+  */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
+
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Enables the Clock Security System
+  */
+  HAL_RCC_EnableCSS();
+}
+
+/* USER CODE BEGIN 4 */
+//计数完后处理数据的函�????????????????????????????
+void FinishCount(){
+//	if(++count1ms<5 && shuiping_scale==0)
+//	{
+//		return;
+//	}
+//	count1ms=0;
+	for(i=0;i<=402;i++)
+	{
+			  ch1_values[i]=(uint16_t)(ch1_values[i]<<8|ch1_values[i]>>8);
+			  ch2_values[i]=(uint16_t)(ch2_values[i]<<8|ch2_values[i]>>8);
+	}
+	if(chuizhi_scale==1)
+	{
+		for(i=0;i<=402;i++)
+			{
+				ch1_values[i]=(uint16_t)(((short int)ch1_values[i]-32768)*10+32768);
+				ch2_values[i]=(uint16_t)(((short int)ch2_values[i]-32768)*10+32768);
+			}
+	}
+	if(chuizhi_scale==0)
+	{
+		for(i=0;i<=402;i++)
+			{
+				ch1_values[i]*=(uint16_t)((short int)ch1_values[i]-32768)*100+32768;
+				ch2_values[i]*=(uint16_t)((short int)ch2_values[i]-32768)*100+32768;
+			}
+	}
+
+
+//	for(i=0;i<=3;i++)
+//	{
+//		HAL_UART_Transmit(&huart2, (uint8_t *)&ch1_values[125*i+1], 250, 5);
+//		HAL_UART_Transmit(&huart2, "\0", 1, 5);
+//	}
+//	if(chuizhi_scale==2)
+//	{
+//			for(i=0;i<=402;i++){
+//			ch1_values[i]=(uint16_t)((ch1_values[i]-768)*1.0/250);
+//			ch2_values[i]=(uint16_t)((ch2_values[i]-768)*1.0/250);
+//			}
+//	}
+//	if(chuizhi_scale==1)
+//	{
+//		for(i=0;i<=402;i++){
+//		ch1_values[i]=(uint16_t)((ch1_values[i]-29568)*1.0/25);
+//		ch2_values[i]=(uint16_t)((ch2_values[i]-29568)*1.0/25);
+//		}
+//	}
+//	if(chuizhi_scale==0)
+//	{
+//		for(i=0;i<=402;i++){
+//		ch1_values[i]=(uint16_t)((ch1_values[i]-32448)*1.0/2.5);
+//		ch2_values[i]=(uint16_t)((ch2_values[i]-32448)*1.0/2.5);
+//		}
+//	}
+
+
+//	if(ch1_show==1)
+//	{
+//		HAL_UART_Transmit(&huart2, (uint8_t *)ch1_show_head, 10, 5);
+//		for(i=1;i<=401;i++){
+//			HAL_UART_Transmit(&huart2, (uint8_t *)&ch1_values[i], 1, 5);
+//		}
+//		HAL_UART_Transmit(&huart2, (uint8_t *)screen_end, 4, 5);
+//	}
+//	if(ch2_show==1)
+//	{
+//		HAL_UART_Transmit(&huart2, (uint8_t *)ch2_show_head, 10, 5);
+//		for(i=1;i<=401;i++){
+//			HAL_UART_Transmit(&huart2, (uint8_t *)&ch2_values[i], 1, 5);
+//		}
+//		HAL_UART_Transmit(&huart2, (uint8_t *)screen_end, 4, 5);
+//	}
+
+	if(ch1_show==1)
+	{
+		for(i=0;i<=399;i++){
+			ch_showall[10+i]=(uint8_t)(ch1_values[1+i]);
+		}
+	}
+	else
+	{
+		for(i=0;i<=399;i++){
+			ch_showall[10+i]=0;
+		}
+	}
+	if(ch2_show==1)
+	{
+		for(i=0;i<=399;i++){
+		ch_showall[424+i]=(uint8_t)(ch2_values[1+i]);
+		}
+	}
+	else
+	{
+		for(i=0;i<=399;i++){
+			ch_showall[424+i]=0;
+		}
+	}
+
+
+
+	HAL_UART_Transmit_DMA(&huart2, ch_showall, 828);
+	HAL_Delay(10);
+	//huart2->State=HAL_USART_STATE_READY;
+	chufazhuangtai=1;
+	HAL_TIM_Base_Start_IT(&htim3);
+
+}
+
+int Dosomething(){
+	//如果按钮被按�??????????
+	if(R_alldata[1]==0xB1&&R_alldata[2]==0x11&&R_alldata[3]==0x00&&R_alldata[4]==0x00&&R_alldata[5]==0x00&&R_alldata[7]==0x10&&R_alldata[8]==0x01)
+	{
+		//ch1通道�??????????启按钮按�??????????
+		if(R_alldata[6]==0x05)
+		{
+			//�??????????启�?�道1
+			if(R_alldata[9]==0x01)
+			{
+				ch1_show=1;
+				count_caiyang=0;
+			}
+			//关闭通道1
+			if(R_alldata[9]==0x00)
+			{
+				ch1_show=0;
+				count_caiyang=0;
+			}
+		}
+		//ch2通道�??????????启按钮按�??????????
+		if(R_alldata[6]==0x06)
+		{
+					//�??????????启�?�道2
+			if(R_alldata[9]==0x01)
+			{
+				ch2_show=1;
+				count_caiyang=0;
+			}
+					//关闭通道2
+			if(R_alldata[9]==0x00)
+			{
+				ch2_show=0;
+				count_caiyang=0;
+			}
+		}
+		//触发调节通道选择按钮按下
+		if(R_alldata[6]==0x0b)
+		{
+			//CH1触发
+			if(R_alldata[9]==0x00)
+			{
+				count_caiyang=0;
+			}
+			//ch2触发
+			if(R_alldata[9]==0x01)
+			{
+				chufa_ch=1;
+				count_caiyang=0;
+			}
+		}
+
+
+
+	}
+	//如果滑动选择被滑�??????????
+	if(R_alldata[1]==0xB1&&R_alldata[2]==0x11&&R_alldata[3]==0x00&&R_alldata[4]==0x00&&R_alldata[5]==0x00&&R_alldata[7]==0x1b)
+	{
+		//幅度调节被按�??????????
+		if(R_alldata[6]==0x04)
+		{
+			switch(R_alldata[8])
+			{
+				case 0:chuizhi_scale=0;break;
+				case 1:chuizhi_scale=1;break;
+				case 2:chuizhi_scale=2;break;
+			}
+		}
+		//时间调节被按�??????????
+		if(R_alldata[6]==0x08)
+		{
+			switch(R_alldata[8])
+			{
+				case 0:shuiping_scale=0;TIM3->PSC=0;count_caiyang=0;break;
+				case 1:shuiping_scale=1;TIM3->PSC=9;count_caiyang=0;break;
+				case 2:shuiping_scale=2;TIM3->PSC=99;count_caiyang=0;break;
+			}
+		}
+	}
+
+
+
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	//UNUSED(huart);
+	if(huart->Instance == USART1)
+	{
+		int i;
+		int isend=0;
+
+					R_alldata[R_place]=R_onedata;     //保存指令单元
+				//如果指令单元为指令头
+				if(R_onedata==0xEE){
+					R_place++;                                      //�??????????始获取下�??????????个指令单�??????????
+				}
+				else if(R_place>=1)R_place++;
+				//超过五个指令单元后判断是否结束指�??????????
+				if(R_place>5){
+						if(R_alldata[R_place-1]==0xFF&&R_alldata[R_place-2]==0xFF&&R_alldata[R_place-3]==0xFC&&R_alldata[R_place-4]==0xFF){
+							Dosomething();                            //调用指令处理函数
+							for(i=0;i<=255;i++)R_alldata[i]=0;            //指令清空
+							R_place=0;                                                  //指令位置�??????????
+						}
+					}
+
+					R_onedata = 0;                                                                             //Çå¿ÕÖ¸Áîµ¥Ôª£¬»ñÈ¡ÏÂÒ»¸öÖ¸Áîµ¥Ôª
+					HAL_UART_Receive_IT(&huart1, (uint8_t *)&R_onedata, 1);
+	}
+}
+
+
+
+/* USER CODE END 4 */
+
+/**
+  * @brief  This function is executed in case of error occurrence.
+  * @retval None
+  */
+void Error_Handler(void)
+{
+  /* USER CODE BEGIN Error_Handler_Debug */
+  /* User can add his own implementation to report the HAL error return state */
+
+  /* USER CODE END Error_Handler_Debug */
+}
+
+#ifdef  USE_FULL_ASSERT
+/**
+  * @brief  Reports the name of the source file and the source line number
+  *         where the assert_param error has occurred.
+  * @param  file: pointer to the source file name
+  * @param  line: assert_param error line source number
+  * @retval None
+  */
+void assert_failed(uint8_t *file, uint32_t line)
+{
+  /* USER CODE BEGIN 6 */
+  /* User can add his own implementation to report the file name and line number,
+     tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+  /* USER CODE END 6 */
+}
+#endif /* USE_FULL_ASSERT */
+
+/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
